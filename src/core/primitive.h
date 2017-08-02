@@ -46,6 +46,12 @@
 
 namespace pbrt {
 
+struct TriangleMesh;
+struct PrimitiveVisitor {
+	virtual void visitMesh(Transform const& obj2world, TriangleMesh const* mesh, Material const* material, AreaLight const* light) = 0;
+	virtual void visitLight(Transform const& obj2world, Light const* mesh) = 0;
+};
+
 // Primitive Declarations
 class Primitive {
   public:
@@ -60,6 +66,7 @@ class Primitive {
                                             MemoryArena &arena,
                                             TransportMode mode,
                                             bool allowMultipleLobes) const = 0;
+	virtual void visit(float time, Transform const& obj2World, PrimitiveVisitor& v) const = 0;
 };
 
 // GeometricPrimitive Declarations
@@ -82,6 +89,7 @@ class GeometricPrimitive : public Primitive {
     void ComputeScatteringFunctions(SurfaceInteraction *isect,
                                     MemoryArena &arena, TransportMode mode,
                                     bool allowMultipleLobes) const;
+	void visit(float time, Transform const& obj2World, PrimitiveVisitor& v) const;
 
   private:
     // GeometricPrimitive Private Data
@@ -112,6 +120,7 @@ class TransformedPrimitive : public Primitive {
     Bounds3f WorldBound() const {
         return PrimitiveToWorld.MotionBounds(primitive->WorldBound());
     }
+	void visit(float time, Transform const& obj2World, PrimitiveVisitor& v) const;
 
   private:
     // TransformedPrimitive Private Data

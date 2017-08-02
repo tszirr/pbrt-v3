@@ -430,6 +430,11 @@ bool KdTreeAccel::IntersectP(const Ray &ray) const {
     return false;
 }
 
+void KdTreeAccel::visit(float time, Transform const& obj2World, PrimitiveVisitor& v) const {
+	for (auto& p : primitives)
+		p->visit(time, obj2World, v);
+}
+
 std::shared_ptr<KdTreeAccel> CreateKdTreeAccelerator(
     const std::vector<std::shared_ptr<Primitive>> &prims, const ParamSet &ps) {
     int isectCost = ps.FindOneInt("intersectcost", 80);

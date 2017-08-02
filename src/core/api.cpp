@@ -1391,7 +1391,14 @@ void pbrtWorldEnd() {
         CHECK_EQ(CurrentProfilerState(), ProfToBits(Prof::SceneConstruction));
         ProfilerState = ProfToBits(Prof::IntegratorRender);
 
-        if (scene && integrator) integrator->Render(*scene);
+        if (scene && integrator) {
+			if (!PbrtOptions.sceneExportDir.empty()) {
+				scene->exportRayn(PbrtOptions.sceneExportDir.c_str());
+			}
+			else {
+				integrator->Render(*scene);
+			}
+		}
 
         CHECK_EQ(CurrentProfilerState(), ProfToBits(Prof::IntegratorRender));
         ProfilerState = ProfToBits(Prof::SceneConstruction);
@@ -1498,6 +1505,122 @@ Camera *RenderOptions::MakeCamera() const {
                                   renderOptions->transformStartTime,
                                   renderOptions->transformEndTime, film);
     return camera;
+}
+
+void Scene::exportRayn(char const* exportDir) const {
+	struct V : PrimitiveVisitor {
+		FILE* fdesc;
+		std::string meshFile;
+		std::string meshPath;
+
+		struct MeshHeader {
+			size_t offset, count;
+			int components;
+			char type[16];
+			char name[1024];
+			char pad[64];
+		};
+
+		struct ExportedMesh {
+			std::string file;
+			std::vector<Transform> instances;
+			size_t idx;
+		};
+		std::vector<TriangleMesh const*> orderedMeshes;
+		std::map< TriangleMesh const*, ExportedMesh > exportedMeshes;
+		
+		void writeMeshes() {
+			FILE* fmesh = fopen(meshPath.c_str(), "wb+");
+
+			int elements = 4; // vtx, nrm, tex, faces
+
+			MeshHeader fileHeader = { };
+			fileHeader.components = orderedMeshes.size() * (1 + elements);
+			fileHeader.offset = (1 + fileHeader.components) * sizeof(MeshHeader);
+			strcpy(fileHeader.type, "mesh");
+
+			size_t headerCursor = fwrite(&fileHeader, sizeof(MeshHeader), 1, fmesh);
+			size_t dataCursor = fileHeader.offset;
+			for (TriangleMesh const* mesh : orderedMeshes) {
+				fseek(fmesh, dataCursor, SEEK_SET);
+				
+				MeshHeader meshHeader = { dataCursor, 0, elements, "mesh" };
+				
+				MeshHeader vertexHeader = { dataCursor, mesh->nVertices, 3, "float", "vertex" };
+				dataCursor += fwrite(mesh->p.get(), sizeof(Point3f), vertexHeader.count, fmesh);
+
+				MeshHeader normalHeader = { dataCursor, vertexHeader.count, 3, "float", "normal" };
+				dataCursor += fwrite(mesh->n.get(), sizeof(Normal3f), normalHeader.count, fmesh);
+
+				MeshHeader texHeader = { dataCursor, vertexHeader.count, 2, "float", "normal" };
+				dataCursor += fwrite(mesh->uv.get(), sizeof(Point2f), texHeader.count, fmesh);
+
+				MeshHeader faceHeader = { dataCursor, mesh->nTriangles, 3, "int", "face" };
+				dataCursor += fwrite(&mesh->vertexIndices[0], sizeof(int) * faceHeader.components, faceHeader.count, fmesh);
+
+				meshHeader.count = dataCursor - meshHeader.offset;
+				fileHeader.count += meshHeader.count;
+
+				fseek(fmesh, headerCursor, SEEK_SET);
+				headerCursor += fwrite(&meshHeader, sizeof(MeshHeader), 1, fmesh);
+				headerCursor += fwrite(&vertexHeader, sizeof(MeshHeader), 1, fmesh);
+				headerCursor += fwrite(&normalHeader, sizeof(MeshHeader), 1, fmesh);
+				headerCursor += fwrite(&texHeader, sizeof(MeshHeader), 1, fmesh);
+				headerCursor += fwrite(&faceHeader, sizeof(MeshHeader), 1, fmesh);
+			}
+
+			assert(headerCursor == fileHeader.offset);
+			fseek(fmesh, 0, SEEK_SET);
+			fwrite(&fileHeader, sizeof(MeshHeader), 1, fmesh);
+
+			fclose(fmesh);
+		}
+
+		V(char const* dir) {
+			std::string s = dir;
+			s += "scene.json";
+			fdesc = fopen(s.c_str(), "wb+");
+			meshPath = dir + (meshFile = "flat.mesh");
+		}
+		~V() {
+			fclose(fdesc);
+		}
+
+		TriangleMesh const* cachedM;
+		Transform cachedMT;
+
+		virtual void visitMesh(Transform const& obj2world, TriangleMesh const* mesh, Material const* material, AreaLight const* light) {
+			if (mesh == cachedM && !memcmp(&obj2world, &cachedMT, sizeof(obj2world)))
+				return;
+			cachedM = mesh;
+			cachedMT = obj2world;
+
+			ExportedMesh& m = exportedMeshes[mesh];
+			for (auto& t : m.instances)
+				if (!memcmp(&obj2world, &t, sizeof(obj2world)))
+					return;
+
+			// new mesh?
+			if (m.instances.empty()) {
+				m.idx = orderedMeshes.size();
+				orderedMeshes.push_back(mesh);
+				m.instances.push_back(obj2world);
+			}
+
+			fputs("{ shape/mesh\n", fdesc);
+			fprintf(fdesc, "\tfile: %s\n", meshPath);
+			fprintf(fdesc, "\tindex: %d\n", int(m.idx));
+
+			// todo: bsdf, area light!
+
+			fputs("}\n\n", fdesc);
+		}
+		virtual void visitLight(Transform const& obj2world, Light const* mesh) {
+
+		}
+	} v(exportDir);
+	aggregate->visit(0, Transform(), v);
+	v.writeMeshes();
 }
 
 }  // namespace pbrt

@@ -734,6 +734,11 @@ bool BVHAccel::IntersectP(const Ray &ray) const {
     return false;
 }
 
+void BVHAccel::visit(float time, Transform const& obj2World, PrimitiveVisitor& v) const {
+	for (auto& p : primitives)
+		p->visit(time, obj2World, v);
+}
+
 std::shared_ptr<BVHAccel> CreateBVHAccelerator(
     const std::vector<std::shared_ptr<Primitive>> &prims, const ParamSet &ps) {
     std::string splitMethodName = ps.FindOneString("splitmethod", "sah");

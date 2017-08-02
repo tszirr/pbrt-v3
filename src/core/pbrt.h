@@ -156,6 +156,7 @@ struct Options {
     bool quiet = false;
     bool cat = false, toPly = false;
     std::string imageFile;
+	std::string sceneExportDir;
 };
 
 extern Options PbrtOptions;

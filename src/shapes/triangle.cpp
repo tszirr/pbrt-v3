@@ -709,3 +709,14 @@ std::vector<std::shared_ptr<Shape>> CreateTriangleMeshShape(
 }
 
 }  // namespace pbrt
+
+#include <primitive.h>
+
+namespace pbrt {
+
+void GeometricPrimitive::visit(float time, Transform const& obj2World, PrimitiveVisitor& v) const {
+	if (auto* t = dynamic_cast<Triangle*>(shape.get()))
+		v.visitMesh(obj2World, t->mesh.get(), material.get(), areaLight.get());
+}
+
+}  // namespace pbrt

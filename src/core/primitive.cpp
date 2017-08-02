@@ -87,6 +87,12 @@ bool TransformedPrimitive::IntersectP(const Ray &r) const {
     return primitive->IntersectP(InterpolatedWorldToPrim(r));
 }
 
+void TransformedPrimitive::visit(float time, Transform const& obj2World, PrimitiveVisitor& v) const {
+	Transform t;
+	PrimitiveToWorld.Interpolate(time, &t);
+	return visit(time, obj2World * t, v);
+}
+
 // GeometricPrimitive Method Definitions
 Bounds3f GeometricPrimitive::WorldBound() const { return shape->WorldBound(); }
 

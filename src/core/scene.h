@@ -65,6 +65,7 @@ class Scene {
     bool IntersectP(const Ray &ray) const;
     bool IntersectTr(Ray ray, Sampler &sampler, SurfaceInteraction *isect,
                      Spectrum *transmittance) const;
+	void exportRayn(char const* dir) const;
 
     // Scene Public Data
     std::vector<std::shared_ptr<Light>> lights;

@@ -57,6 +57,7 @@ class KdTreeAccel : public Aggregate {
     ~KdTreeAccel();
     bool Intersect(const Ray &ray, SurfaceInteraction *isect) const;
     bool IntersectP(const Ray &ray) const;
+	void visit(float time, Transform const& obj2World, PrimitiveVisitor& v) const;
 
   private:
     // KdTreeAccel Private Methods
