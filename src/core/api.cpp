@@ -157,7 +157,7 @@ struct TransformSet {
 
 struct RenderOptions {
     // RenderOptions Public Methods
-    Integrator *MakeIntegrator() const;
+    Integrator *MakeIntegrator(Camera const** cam = 0) const;
     Scene *MakeScene();
     Camera *MakeCamera() const;
 
@@ -1380,7 +1380,8 @@ void pbrtWorldEnd() {
     if (PbrtOptions.cat || PbrtOptions.toPly) {
         printf("%*sWorldEnd\n", catIndentCount, "");
     } else {
-        std::unique_ptr<Integrator> integrator(renderOptions->MakeIntegrator());
+		Camera const* camera;
+        std::unique_ptr<Integrator> integrator(renderOptions->MakeIntegrator(&camera));
         std::unique_ptr<Scene> scene(renderOptions->MakeScene());
 
         // This is kind of ugly; we directly override the current profiler
@@ -1394,7 +1395,7 @@ void pbrtWorldEnd() {
 
         if (scene && integrator) {
 			if (!PbrtOptions.sceneExportDir.empty()) {
-				scene->exportRayn(PbrtOptions.sceneExportDir.c_str());
+				scene->exportRayn(PbrtOptions.sceneExportDir.c_str(), camera);
 			}
 			else {
 				integrator->Render(*scene);
@@ -1441,7 +1442,7 @@ Scene *RenderOptions::MakeScene() {
     return scene;
 }
 
-Integrator *RenderOptions::MakeIntegrator() const {
+Integrator *RenderOptions::MakeIntegrator(Camera const** cam) const {
     std::shared_ptr<const Camera> camera(MakeCamera());
     if (!camera) {
         Error("Unable to create camera");
@@ -1492,6 +1493,7 @@ Integrator *RenderOptions::MakeIntegrator() const {
         Warning(
             "No light sources defined in scene; "
             "rendering a black image.");
+	if (cam) *cam = camera.get();
     return integrator;
 }
 
@@ -1508,7 +1510,7 @@ Camera *RenderOptions::MakeCamera() const {
     return camera;
 }
 
-void Scene::exportRayn(char const* exportDir) const {
+void Scene::exportRayn(char const* exportDir, Camera const* camera) const {
 	struct V : PrimitiveVisitor {
 		FILE* fdesc;
 		std::string meshFile;
@@ -1582,7 +1584,7 @@ void Scene::exportRayn(char const* exportDir) const {
 			fclose(fmesh);
 		}
 
-		V(char const* dir) {
+		V(char const* dir, Camera const* camera) {
 			std::string s = dir;
 			if (!s.empty() && s.back() != '/' && s.back() != '\\')
 				s.push_back('/');
@@ -1594,10 +1596,36 @@ void Scene::exportRayn(char const* exportDir) const {
 			s += "scene.json";
 			fdesc = fopen(s.c_str(), "wb+");
 			assert(fdec);
-			meshPath = dir + (meshFile = "flat.mesh");
+
+			if (camera) {
+				fputs("{ camera/pinhole:,\n", fdesc);
+				serialize(fdesc, camera->CameraToWorld);
+				// todo: camera parameters?
+				fputs("},\n\n", fdesc);
+			}
+
+			meshPath = dir + (meshFile = "everything.mesh");
 		}
 		~V() {
 			fclose(fdesc);
+		}
+
+		static void serialize(FILE* fdesc, AnimatedTransform const& obj2world) {
+			// todo: motion
+			Transform t;
+			obj2world.Interpolate(0, &t);
+			serialize(fdesc, t);
+		}
+		static void serialize(FILE* fdesc, Transform const& obj2world) {
+			Point3f pos = obj2world(Point3f(0, 0, 0));
+			Vector3f up = obj2world(Vector3f(0, 1, 0));
+			Vector3f dir = obj2world(Vector3f(0, 0, 1));
+			fputs("\tlocation: {\n", fdesc);
+			fprintf(fdesc, "\t\tposition: { x: %f, y: %f, z: %f },\n", pos.x, pos.y, pos.z);
+			fprintf(fdesc, "\t\tdirection: { x: %f, y: %f, z: %f },\n", dir.x, dir.y, dir.z);
+			fprintf(fdesc, "\t\tup: { x: %f, y: %f, z: %f },\n", up.x, up.y, up.z);
+			fputs("\t},\n", fdesc);
+
 		}
 
 		TriangleMesh const* cachedM = nullptr;
@@ -1621,19 +1649,20 @@ void Scene::exportRayn(char const* exportDir) const {
 			}
 			m.instances.push_back(obj2world);
 
-			fputs("{ shape/mesh\n", fdesc);
-			fprintf(fdesc, "\tfile: %s\n", meshPath.c_str());
-			fprintf(fdesc, "\tindex: %d\n", int(m.idx));
+			fputs("{ shape/mesh:,\n", fdesc);
+			fprintf(fdesc, "\tfile: %s,\n", meshFile.c_str());
+			fprintf(fdesc, "\tindex: %d,\n", int(m.idx));
+			serialize(fdesc, obj2world);
 
 			// todo: bsdf, area light!
 
-			fputs("}\n\n", fdesc);
+			fputs("},\n\n", fdesc);
 		}
 		virtual void visitLight(Transform const& obj2world, Light const* mesh) {
 
 		}
-	} v(exportDir);
-	aggregate->visit(0, Transform(), v);
+	} v(exportDir, camera);
+	aggregate->visit(0.5, Transform(), v);
 	v.writeMeshes();
 }
 
