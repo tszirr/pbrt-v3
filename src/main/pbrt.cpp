@@ -112,7 +112,11 @@ int main(int argc, char *argv[]) {
             options.cat = true;
         } else if (!strcmp(argv[i], "--toply") || !strcmp(argv[i], "-toply")) {
             options.toPly = true;
-        } else if (!strcmp(argv[i], "--v") || !strcmp(argv[i], "-v")) {
+		} else if (!strcmp(argv[i], "--exportdir") || !strcmp(argv[i], "-exportdir")) {
+			if (i + 1 == argc)
+				usage("missing value after --exportdir argument");
+			options.sceneExportDir = argv[++i];
+		} else if (!strcmp(argv[i], "--v") || !strcmp(argv[i], "-v")) {
             if (i + 1 == argc)
                 usage("missing value after --v argument");
             FLAGS_v = atoi(argv[++i]);

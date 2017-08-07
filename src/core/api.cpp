@@ -116,6 +116,7 @@
 #include "media/homogeneous.h"
 #include <map>
 #include <stdio.h>
+#include <cstdlib>
 
 namespace pbrt {
 
@@ -1531,11 +1532,10 @@ void Scene::exportRayn(char const* exportDir) const {
 		
 		void writeMeshes() {
 			FILE* fmesh = fopen(meshPath.c_str(), "wb+");
-
-			int elements = 4; // vtx, nrm, tex, faces
+			assert(fmesh);
 
 			MeshHeader fileHeader = { };
-			fileHeader.components = orderedMeshes.size() * (1 + elements);
+			fileHeader.components = 1;
 			fileHeader.offset = (1 + fileHeader.components) * sizeof(MeshHeader);
 			strcpy(fileHeader.type, "mesh");
 
@@ -1544,17 +1544,21 @@ void Scene::exportRayn(char const* exportDir) const {
 			for (TriangleMesh const* mesh : orderedMeshes) {
 				fseek(fmesh, dataCursor, SEEK_SET);
 				
+				int elements = 2 + !!mesh->n.get() + !!mesh->uv.get();
 				MeshHeader meshHeader = { dataCursor, 0, elements, "mesh" };
-				
+				fileHeader.components += elements;
+
 				MeshHeader vertexHeader = { dataCursor, mesh->nVertices, 3, "float", "vertex" };
 				dataCursor += fwrite(mesh->p.get(), sizeof(Point3f), vertexHeader.count, fmesh);
 
 				MeshHeader normalHeader = { dataCursor, vertexHeader.count, 3, "float", "normal" };
-				dataCursor += fwrite(mesh->n.get(), sizeof(Normal3f), normalHeader.count, fmesh);
-
-				MeshHeader texHeader = { dataCursor, vertexHeader.count, 2, "float", "normal" };
-				dataCursor += fwrite(mesh->uv.get(), sizeof(Point2f), texHeader.count, fmesh);
-
+				if (mesh->n.get()) {
+					dataCursor += fwrite(mesh->n.get(), sizeof(Normal3f), normalHeader.count, fmesh);
+				}
+				MeshHeader texHeader = { dataCursor, vertexHeader.count, 2, "float", "uv" };
+				if (mesh->uv.get()) {
+					dataCursor += fwrite(mesh->uv.get(), sizeof(Point2f), texHeader.count, fmesh);
+				}
 				MeshHeader faceHeader = { dataCursor, mesh->nTriangles, 3, "int", "face" };
 				dataCursor += fwrite(&mesh->vertexIndices[0], sizeof(int) * faceHeader.components, faceHeader.count, fmesh);
 
@@ -1564,8 +1568,10 @@ void Scene::exportRayn(char const* exportDir) const {
 				fseek(fmesh, headerCursor, SEEK_SET);
 				headerCursor += fwrite(&meshHeader, sizeof(MeshHeader), 1, fmesh);
 				headerCursor += fwrite(&vertexHeader, sizeof(MeshHeader), 1, fmesh);
-				headerCursor += fwrite(&normalHeader, sizeof(MeshHeader), 1, fmesh);
-				headerCursor += fwrite(&texHeader, sizeof(MeshHeader), 1, fmesh);
+				if (mesh->n.get())
+					headerCursor += fwrite(&normalHeader, sizeof(MeshHeader), 1, fmesh);
+				if (mesh->uv.get())
+					headerCursor += fwrite(&texHeader, sizeof(MeshHeader), 1, fmesh);
 				headerCursor += fwrite(&faceHeader, sizeof(MeshHeader), 1, fmesh);
 			}
 
@@ -1578,37 +1584,45 @@ void Scene::exportRayn(char const* exportDir) const {
 
 		V(char const* dir) {
 			std::string s = dir;
+			if (!s.empty() && s.back() != '/' && s.back() != '\\')
+				s.push_back('/');
+#ifdef _WIN32
+			system(("mkdir " + s).c_str());
+#else
+			system(("mkdir -p " + s).c_str());
+#endif
 			s += "scene.json";
 			fdesc = fopen(s.c_str(), "wb+");
+			assert(fdec);
 			meshPath = dir + (meshFile = "flat.mesh");
 		}
 		~V() {
 			fclose(fdesc);
 		}
 
-		TriangleMesh const* cachedM;
+		TriangleMesh const* cachedM = nullptr;
 		Transform cachedMT;
 
 		virtual void visitMesh(Transform const& obj2world, TriangleMesh const* mesh, Material const* material, AreaLight const* light) {
-			if (mesh == cachedM && !memcmp(&obj2world, &cachedMT, sizeof(obj2world)))
+			if (mesh == cachedM && obj2world == cachedMT)
 				return;
 			cachedM = mesh;
 			cachedMT = obj2world;
 
 			ExportedMesh& m = exportedMeshes[mesh];
 			for (auto& t : m.instances)
-				if (!memcmp(&obj2world, &t, sizeof(obj2world)))
+				if (obj2world == t)
 					return;
 
 			// new mesh?
 			if (m.instances.empty()) {
 				m.idx = orderedMeshes.size();
 				orderedMeshes.push_back(mesh);
-				m.instances.push_back(obj2world);
 			}
+			m.instances.push_back(obj2world);
 
 			fputs("{ shape/mesh\n", fdesc);
-			fprintf(fdesc, "\tfile: %s\n", meshPath);
+			fprintf(fdesc, "\tfile: %s\n", meshPath.c_str());
 			fprintf(fdesc, "\tindex: %d\n", int(m.idx));
 
 			// todo: bsdf, area light!

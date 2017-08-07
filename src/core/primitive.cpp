@@ -90,7 +90,7 @@ bool TransformedPrimitive::IntersectP(const Ray &r) const {
 void TransformedPrimitive::visit(float time, Transform const& obj2World, PrimitiveVisitor& v) const {
 	Transform t;
 	PrimitiveToWorld.Interpolate(time, &t);
-	return visit(time, obj2World * t, v);
+	return primitive->visit(time, obj2World * t, v);
 }
 
 // GeometricPrimitive Method Definitions
