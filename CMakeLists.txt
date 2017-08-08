@@ -365,6 +365,7 @@ INCLUDE_DIRECTORIES ( src/ext/ptex/src/ptex )
 
 SET ( PBRT_CORE_SOURCE
   src/core/api.cpp
+  src/core/export.hpp
   src/core/bssrdf.cpp
   src/core/camera.cpp
   src/core/efloat.cpp
