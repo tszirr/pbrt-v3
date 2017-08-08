@@ -109,49 +109,55 @@ void Scene::exportRayn(char const* exportDir, Camera const* camera) const {
 			assert(fmesh);
 
 			MeshHeader fileHeader = { };
-			fileHeader.components = 1;
+			fileHeader.components = 0;
+			for (TriangleMesh const* mesh : orderedMeshes) {
+				int elements = 1 + 2 + !!mesh->n.get() + !!mesh->uv.get(); // pos, nrm, uv, face
+				fileHeader.components += elements;
+			}
 			fileHeader.offset = (1 + fileHeader.components) * sizeof(MeshHeader);
 			strcpy(fileHeader.type, "mesh");
 
-			size_t headerCursor = fwrite(&fileHeader, sizeof(MeshHeader), 1, fmesh);
+			size_t headerCursor = fwrite(&fileHeader, 1, sizeof(MeshHeader), fmesh);
 			size_t dataCursor = fileHeader.offset;
 			for (TriangleMesh const* mesh : orderedMeshes) {
 				fseek(fmesh, dataCursor, SEEK_SET);
 				
-				int elements = 2 + !!mesh->n.get() + !!mesh->uv.get();
-				MeshHeader meshHeader = { dataCursor, 0, elements, "mesh" };
-				fileHeader.components += elements;
+				MeshHeader meshHeader = { dataCursor, 0, 0, "mesh" };
 
 				MeshHeader vertexHeader = { dataCursor, mesh->nVertices, 3, "float", "vertex" };
-				dataCursor += fwrite(mesh->p.get(), sizeof(Point3f), vertexHeader.count, fmesh);
+				dataCursor += fwrite(mesh->p.get(), 1, sizeof(Point3f) * vertexHeader.count, fmesh);
+				++meshHeader.components;
 
 				MeshHeader normalHeader = { dataCursor, vertexHeader.count, 3, "float", "normal" };
 				if (mesh->n.get()) {
-					dataCursor += fwrite(mesh->n.get(), sizeof(Normal3f), normalHeader.count, fmesh);
+					dataCursor += fwrite(mesh->n.get(), 1, sizeof(Normal3f) * normalHeader.count, fmesh);
+					++meshHeader.components;
 				}
-				MeshHeader texHeader = { dataCursor, vertexHeader.count, 2, "float", "uv" };
+				MeshHeader texHeader = { dataCursor, vertexHeader.count, 2, "float", "texcoord" };
 				if (mesh->uv.get()) {
-					dataCursor += fwrite(mesh->uv.get(), sizeof(Point2f), texHeader.count, fmesh);
+					dataCursor += fwrite(mesh->uv.get(), 1, sizeof(Point2f) * texHeader.count, fmesh);
+					++meshHeader.components;
 				}
 				MeshHeader faceHeader = { dataCursor, mesh->nTriangles, 3, "int", "face" };
-				dataCursor += fwrite(&mesh->vertexIndices[0], sizeof(int) * faceHeader.components, faceHeader.count, fmesh);
+				dataCursor += fwrite(&mesh->vertexIndices[0], 1, sizeof(int) * faceHeader.components * faceHeader.count, fmesh);
+				++meshHeader.components;
 
 				meshHeader.count = dataCursor - meshHeader.offset;
 				fileHeader.count += meshHeader.count;
 
 				fseek(fmesh, headerCursor, SEEK_SET);
-				headerCursor += fwrite(&meshHeader, sizeof(MeshHeader), 1, fmesh);
-				headerCursor += fwrite(&vertexHeader, sizeof(MeshHeader), 1, fmesh);
+				headerCursor += fwrite(&meshHeader, 1, sizeof(MeshHeader), fmesh);
+				headerCursor += fwrite(&vertexHeader, 1, sizeof(MeshHeader), fmesh);
 				if (mesh->n.get())
-					headerCursor += fwrite(&normalHeader, sizeof(MeshHeader), 1, fmesh);
+					headerCursor += fwrite(&normalHeader, 1, sizeof(MeshHeader), fmesh);
 				if (mesh->uv.get())
-					headerCursor += fwrite(&texHeader, sizeof(MeshHeader), 1, fmesh);
-				headerCursor += fwrite(&faceHeader, sizeof(MeshHeader), 1, fmesh);
+					headerCursor += fwrite(&texHeader, 1, sizeof(MeshHeader), fmesh);
+				headerCursor += fwrite(&faceHeader, 1, sizeof(MeshHeader), fmesh);
 			}
 
 			assert(headerCursor == fileHeader.offset);
 			fseek(fmesh, 0, SEEK_SET);
-			fwrite(&fileHeader, sizeof(MeshHeader), 1, fmesh);
+			fwrite(&fileHeader, 1, sizeof(MeshHeader), fmesh);
 
 			fclose(fmesh);
 		}
