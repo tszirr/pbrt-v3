@@ -12,17 +12,17 @@ void Scene::exportRayn(char const* exportDir, Camera const* camera) const {
 		std::string meshPath;
 
 		V(char const* dir, Camera const* camera) {
-			std::string s = dir;
-			if (!s.empty() && s.back() != '/' && s.back() != '\\')
-				s.push_back('/');
+			std::string prefix = dir;
+			if (!prefix.empty() && prefix.back() != '/' && prefix.back() != '\\')
+				prefix.push_back('/');
 #ifdef _WIN32
-			std::replace(s.begin(), s.end(), '/', '\\');
-			system(("mkdir " + s).c_str());
-			std::replace(s.begin(), s.end(), '\\', '/');
+			std::replace(prefix.begin(), prefix.end(), '/', '\\');
+			system(("mkdir " + prefix).c_str());
+			std::replace(prefix.begin(), prefix.end(), '\\', '/');
 #else
-			system(("mkdir -p " + s).c_str());
+			system(("mkdir -p " + prefix).c_str());
 #endif
-			s += "scene.json";
+			std::string s = prefix + "scene.json";
 			fdesc = fopen(s.c_str(), "wb+");
 			assert(fdec);
 
@@ -33,7 +33,7 @@ void Scene::exportRayn(char const* exportDir, Camera const* camera) const {
 				fputs("},\n\n", fdesc);
 			}
 
-			meshPath = dir + (meshFile = "everything.mesh");
+			meshPath = prefix + (meshFile = "everything.mesh");
 		}
 		~V() {
 			fclose(fdesc);
@@ -64,7 +64,7 @@ void Scene::exportRayn(char const* exportDir, Camera const* camera) const {
 			size_t idx;
 		};
 		std::vector<TriangleMesh const*> orderedMeshes;
-		std::map< TriangleMesh const*, ExportedMesh > exportedMeshes;
+		std::unordered_map< TriangleMesh const*, ExportedMesh > exportedMeshes;
 		
 		TriangleMesh const* cachedM = nullptr;
 		Transform cachedMT;
